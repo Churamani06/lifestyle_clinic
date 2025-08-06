@@ -8,9 +8,14 @@ const router = express.Router();
 
 // Generate form ID
 const generateFormId = () => {
-  const timestamp = Date.now();
-  const random = Math.floor(Math.random() * 1000);
-  return `FORM-${timestamp}-${random}`;
+  const now = new Date();
+  const year = now.getFullYear().toString().slice(-2); // Last 2 digits of year
+  const month = (now.getMonth() + 1).toString().padStart(2, '0');
+  const day = now.getDate().toString().padStart(2, '0');
+  const hour = now.getHours().toString().padStart(2, '0');
+  const minute = now.getMinutes().toString().padStart(2, '0');
+  const random = Math.floor(Math.random() * 999).toString().padStart(3, '0');
+  return `F${year}${month}${day}${hour}${minute}${random}`;
 };
 
 // Validation rules for health assessment form
@@ -34,8 +39,8 @@ const healthFormValidation = [
     .withMessage('Gender must be male, female, or other'),
   
   body('contact')
-    .matches(/^[6-9]\d{9}$/)
-    .withMessage('Contact must be a valid 10-digit Indian mobile number'),
+    .matches(/^[0-9]{10}$/)
+    .withMessage('Contact must be a valid 10-digit mobile number'),
   
   body('completeAddress')
     .trim()
@@ -48,8 +53,8 @@ const healthFormValidation = [
   
   body('primaryIssue')
     .trim()
-    .isLength({ min: 5, max: 200 })
-    .withMessage('Primary health concern must be at least 5 characters long (e.g., "back pain", "headaches", "stress management")'),
+    .isLength({ min: 3, max: 200 })
+    .withMessage('Primary health concern must be at least 3 characters long (e.g., "back pain", "headaches", "stress management")'),
   
   body('symptoms')
     .optional()
@@ -79,8 +84,8 @@ router.post('/', verifyToken, healthFormValidation, handleValidationErrors, asyn
 
     const [result] = await db.execute(
       `INSERT INTO health_assessment_forms 
-       (form_id, user_id, full_name, father_mother_name, age, gender, contact, complete_address, medical_system, primary_issue, symptoms) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (form_id, user_id, full_name, father_mother_name, age, gender, contact, complete_address, medical_system, primary_issue, symptoms, submitted_date) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [formId, req.user.userId, fullName, fatherMotherName, age, gender, contact, completeAddress, medicalSystem, primaryIssue, symptoms || '']
     );
 

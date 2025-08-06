@@ -49,7 +49,10 @@ const Dashboard = () => {
 
       const data = await response.json();
       if (data.success) {
+        console.log('Fetched forms data:', data.data.forms); // Debug log
         setSubmittedForms(data.data.forms);
+      } else {
+        console.error('Failed to fetch forms:', data.message);
       }
     } catch (error) {
       console.error('Error fetching forms:', error);
@@ -554,13 +557,13 @@ const Dashboard = () => {
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs text-gray-600">
-                              <span className="font-medium">Submitted:</span> {new Date(form.submitted_date).toLocaleDateString()}
+                              <span className="font-medium">Submitted:</span> {new Date(form.submitted_date || form.created_at || Date.now()).toLocaleDateString()}
                             </p>
                             <p className="text-xs text-gray-500 truncate">
                               <span className="font-medium">Type:</span> {getMedicalSystemLabel(form.medical_system)}
                             </p>
                             <p className="text-xs text-gray-500 truncate">
-                              <span className="font-medium">Status:</span> {form.form_status}
+                              <span className="font-medium">Status:</span> {form.status || form.form_status || 'Submitted'}
                             </p>
                           </div>
                         </div>
@@ -597,10 +600,10 @@ const Dashboard = () => {
             <div className="flex items-center justify-between pb-4 border-b border-gray-200">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 font-heading">
-                  Form Details - {selectedForm.id}
+                  Form Details - {selectedForm.form_id}
                 </h3>
                 <div className="flex items-center space-x-2 mt-1">
-                  <span className="text-sm text-gray-500">Submitted: {selectedForm.submittedDate}</span>
+                  <span className="text-sm text-gray-500">Submitted: {new Date(selectedForm.submitted_date || selectedForm.created_at || Date.now()).toLocaleDateString()}</span>
                 </div>
               </div>
               <button
