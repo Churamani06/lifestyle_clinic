@@ -32,15 +32,16 @@ const healthFormValidation = [
   
   body('age')
     .isInt({ min: 1, max: 120 })
-    .withMessage('Age must be between 1 and 120'),
+    .withMessage('Age must be between 1 and 120')
+    .toInt(), // Convert to integer
   
   body('gender')
-    .isIn(['male', 'female', 'other'])
-    .withMessage('Gender must be male, female, or other'),
+    .isIn(['male', 'female', 'other', 'prefer-not-to-say'])
+    .withMessage('Gender must be male, female, other, or prefer-not-to-say'),
   
   body('contact')
-    .matches(/^[0-9]{10}$/)
-    .withMessage('Contact must be a valid 10-digit mobile number'),
+    .matches(/^(\+91[-\s]?)?[0-9]{10}$/)
+    .withMessage('Contact must be a valid 10-digit mobile number (with or without +91)'),
   
   body('completeAddress')
     .trim()
@@ -48,13 +49,13 @@ const healthFormValidation = [
     .withMessage('Complete address must be between 10 and 500 characters'),
   
   body('medicalSystem')
-    .isIn(['ayurvedic', 'allopathic', 'homeopathic', 'naturopathy'])
-    .withMessage('Medical system must be ayurvedic, allopathic, homeopathic, or naturopathy'),
+    .isIn(['ayurvedic', 'allopathic', 'homeopathic', 'naturopathy', 'any'])
+    .withMessage('Medical system must be ayurvedic, allopathic, homeopathic, naturopathy, or any'),
   
   body('primaryIssue')
     .trim()
-    .isLength({ min: 3, max: 200 })
-    .withMessage('Primary health concern must be at least 3 characters long (e.g., "back pain", "headaches", "stress management")'),
+    .isLength({ min: 5, max: 1000 })
+    .withMessage('Primary health concern must be at least 5 characters long and not exceed 1000 characters'),
   
   body('symptoms')
     .optional()
@@ -68,6 +69,11 @@ const healthFormValidation = [
 // @access  Private
 router.post('/', verifyToken, healthFormValidation, handleValidationErrors, async (req, res, next) => {
   try {
+    console.log('=== HEALTH FORM SUBMISSION ===');
+    console.log('Request body:', req.body);
+    console.log('User:', req.user);
+    console.log('=============================');
+    
     const {
       fullName,
       fatherMotherName,
@@ -80,13 +86,55 @@ router.post('/', verifyToken, healthFormValidation, handleValidationErrors, asyn
       symptoms
     } = req.body;
 
+    // Normalize contact number (remove +91, spaces, hyphens)
+    const normalizedContact = contact.replace(/^\+91[-\s]?/, '').replace(/[-\s]/g, '');
+
     const formId = generateFormId();
+
+    // Handle both regular users and admin users
+    const userId = req.user.userId || req.user.adminId;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User identification failed'
+      });
+    }
+
+    // Ensure all parameters are properly defined and not undefined
+    const formData = {
+      formId: formId,
+      userId: userId,
+      fullName: String(fullName || '').trim(),
+      fatherMotherName: String(fatherMotherName || '').trim(),
+      age: isNaN(parseInt(age)) ? 0 : parseInt(age),
+      gender: String(gender || '').trim(),
+      contact: String(normalizedContact || '').trim(),
+      completeAddress: String(completeAddress || '').trim(),
+      medicalSystem: String(medicalSystem || '').trim(),
+      primaryIssue: String(primaryIssue || '').trim(),
+      symptoms: String(symptoms || '').trim()
+    };
+
+    console.log('Prepared form data for DB insertion:', formData);
 
     const [result] = await db.execute(
       `INSERT INTO health_assessment_forms 
        (form_id, user_id, full_name, father_mother_name, age, gender, contact, complete_address, medical_system, primary_issue, symptoms, submitted_date) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [formId, req.user.userId, fullName, fatherMotherName, age, gender, contact, completeAddress, medicalSystem, primaryIssue, symptoms || '']
+      [
+        formData.formId,
+        formData.userId,
+        formData.fullName,
+        formData.fatherMotherName,
+        formData.age,
+        formData.gender,
+        formData.contact,
+        formData.completeAddress,
+        formData.medicalSystem,
+        formData.primaryIssue,
+        formData.symptoms
+      ]
     );
 
     res.status(201).json({
@@ -99,7 +147,19 @@ router.post('/', verifyToken, healthFormValidation, handleValidationErrors, asyn
     });
 
   } catch (error) {
-    next(error);
+    console.error('=== HEALTH FORM SUBMISSION ERROR ===');
+    console.error('Error details:', error);
+    console.error('Request body:', req.body);
+    console.error('User:', req.user);
+    console.error('=====================================');
+    
+    // Send more specific error information
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit health form',
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
@@ -112,17 +172,20 @@ router.get('/', verifyToken, async (req, res, next) => {
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
+    // Handle both regular users and admin users
+    const userId = req.user.userId || req.user.adminId;
+
     const [forms] = await db.execute(
       `SELECT * FROM health_assessment_forms 
        WHERE user_id = ? 
        ORDER BY submitted_date DESC 
-       LIMIT ? OFFSET ?`,
-      [req.user.userId, limit, offset]
+       LIMIT ${limit} OFFSET ${offset}`,
+      [userId]
     );
 
     const [countResult] = await db.execute(
       'SELECT COUNT(*) as total FROM health_assessment_forms WHERE user_id = ?',
-      [req.user.userId]
+      [userId]
     );
 
     const total = countResult[0].total;
@@ -169,8 +232,11 @@ router.get('/:formId', verifyToken, async (req, res, next) => {
 
     const form = formResult[0];
 
+    // Handle both regular users and admin users
+    const userId = req.user.userId || req.user.adminId;
+
     // Check if the form belongs to the current user
-    if (form.user_id !== req.user.userId) {
+    if (form.user_id !== userId) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -194,10 +260,13 @@ router.get('/:formId', verifyToken, async (req, res, next) => {
 // @access  Private
 router.get('/statistics/user', verifyToken, async (req, res, next) => {
   try {
+    // Handle both regular users and admin users
+    const userId = req.user.userId || req.user.adminId;
+
     // Get all forms for the user
     const [forms] = await db.execute(
       'SELECT * FROM health_assessment_forms WHERE user_id = ? ORDER BY submitted_date DESC',
-      [req.user.userId]
+      [userId]
     );
     
     const statistics = {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { EyeIcon, EyeSlashIcon, HeartIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { authAPI } from '../config/api';
 
 const SignUp = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -40,24 +41,16 @@ const SignUp = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:5000/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          email: formData.email,
-          phone: formData.phone,
-          password: formData.password,
-          confirmPassword: formData.confirmPassword,
-          agreeToTerms: formData.agreeToTerms,
-          subscribeNewsletter: formData.subscribeNewsletter
-        })
+      const data = await authAPI.register({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        password: formData.password,
+        confirmPassword: formData.confirmPassword,
+        agreeToTerms: formData.agreeToTerms,
+        subscribeNewsletter: formData.subscribeNewsletter
       });
-
-      const data = await response.json();
 
       if (data.success) {
         // Store token and user data
@@ -73,7 +66,7 @@ const SignUp = () => {
       }
     } catch (error) {
       console.error('Signup error:', error);
-      alert('Network error. Please check if the backend server is running.');
+      alert(error.message || 'Network error. Please check if the backend server is running.');
     }
   };
 

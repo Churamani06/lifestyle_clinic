@@ -33,10 +33,9 @@
    npm start
    ```
 
-4. **Default Admin Account**
-   - Username: `admin`
-   - Password: `admin123`
-   - The system will create this automatically if no admin exists
+4. **Create Admin Account**
+   - You can create admin accounts using the API endpoint
+   - Use the `/api/admin-auth/create-admin` endpoint to create new admins
 
 ## API Endpoints
 

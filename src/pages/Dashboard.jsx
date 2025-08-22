@@ -9,6 +9,7 @@ import {
   EyeIcon
 } from '@heroicons/react/24/outline';
 import { useLanguage } from '../contexts/LanguageContext';
+import { healthFormsAPI } from '../config/api';
 
 const Dashboard = () => {
   const { t } = useLanguage();
@@ -29,10 +30,19 @@ const Dashboard = () => {
   const [showModal, setShowModal] = useState(false);
   const [submittedForms, setSubmittedForms] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [userStats, setUserStats] = useState({
+    totalForms: 0,
+    submittedForms: 0,
+    reviewedForms: 0,
+    scheduledForms: 0,
+    completedForms: 0
+  });
+  const [statsUpdating, setStatsUpdating] = useState(false);
 
   // Fetch user's submitted forms on component mount
   useEffect(() => {
     fetchUserForms();
+    fetchUserStatistics();
   }, []);
 
   const fetchUserForms = async () => {
@@ -40,14 +50,7 @@ const Dashboard = () => {
       const token = localStorage.getItem('authToken');
       if (!token) return;
 
-      const response = await fetch('http://localhost:5000/api/health-forms', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const data = await response.json();
+      const data = await healthFormsAPI.getAll();
       if (data.success) {
         console.log('Fetched forms data:', data.data.forms); // Debug log
         setSubmittedForms(data.data.forms);
@@ -56,6 +59,23 @@ const Dashboard = () => {
       }
     } catch (error) {
       console.error('Error fetching forms:', error);
+    }
+  };
+
+  const fetchUserStatistics = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) return;
+
+      const data = await healthFormsAPI.getStatistics();
+      if (data.success) {
+        console.log('Fetched user statistics:', data.data); // Debug log
+        setUserStats(data.data);
+      } else {
+        console.error('Failed to fetch statistics:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching statistics:', error);
     }
   };
 
@@ -96,6 +116,28 @@ const Dashboard = () => {
     return systems[system] || system;
   };
 
+  const getStatusColor = (status) => {
+    const statusColors = {
+      'submitted': 'bg-blue-100 text-blue-600',
+      'reviewed': 'bg-yellow-100 text-yellow-600', 
+      'consultation_scheduled': 'bg-green-100 text-green-600',
+      'completed': 'bg-purple-100 text-purple-600',
+      'cancelled': 'bg-red-100 text-red-600'
+    };
+    return statusColors[status] || 'bg-gray-100 text-gray-600';
+  };
+
+  const getStatusText = (status) => {
+    const statusTexts = {
+      'submitted': 'Submitted',
+      'reviewed': 'Under Review',
+      'consultation_scheduled': 'Scheduled',
+      'completed': 'Completed',
+      'cancelled': 'Cancelled'
+    };
+    return statusTexts[status] || 'Submitted';
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -109,34 +151,33 @@ const Dashboard = () => {
     setLoading(true);
     
     try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch('http://localhost:5000/api/health-forms', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          fullName: formData.fullName,
-          fatherMotherName: formData.fatherMotherName,
-          age: parseInt(formData.age),
-          gender: formData.gender,
-          contact: formData.contact,
-          completeAddress: formData.completeAddress,
-          medicalSystem: formData.medicalSystem,
-          primaryIssue: formData.issue,
-          symptoms: formData.symptoms
-        })
+      const data = await healthFormsAPI.create({
+        fullName: formData.fullName,
+        fatherMotherName: formData.fatherMotherName,
+        age: parseInt(formData.age),
+        gender: formData.gender,
+        contact: formData.contact,
+        completeAddress: formData.completeAddress,
+        medicalSystem: formData.medicalSystem,
+        primaryIssue: formData.issue,
+        symptoms: formData.symptoms
       });
-
-      const data = await response.json();
       
       if (data.success) {
         console.log('Health assessment form submitted:', data);
         setIsSubmitted(true);
         
-        // Refresh the forms list
+        // Show stats updating animation
+        setStatsUpdating(true);
+        
+        // Refresh the forms list and statistics
         await fetchUserForms();
+        await fetchUserStatistics();
+        
+        // Hide stats updating animation
+        setTimeout(() => {
+          setStatsUpdating(false);
+        }, 1000);
         
         // Reset form
         setFormData({
@@ -160,7 +201,7 @@ const Dashboard = () => {
       }
     } catch (error) {
       console.error('Form submission error:', error);
-      alert('Network error. Please check if the backend server is running.');
+      alert(error.message || 'Network error. Please check if the backend server is running.');
     } finally {
       setLoading(false);
     }
@@ -201,6 +242,17 @@ const Dashboard = () => {
                 <strong>Multiple Sessions:</strong> You can submit additional health assessment forms for different health concerns anytime.
               </p>
             </div>
+            {statsUpdating && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
+                <p className="text-sm text-blue-700 flex items-center">
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <strong>Updating your submission counts...</strong>
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -527,65 +579,8 @@ const Dashboard = () => {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-semibold text-gray-900 font-heading flex items-center">
                   <ClipboardDocumentListIcon className="h-5 w-5 mr-2 text-primary-600" />
-                  Submitted Forms ({submittedForms.length})
+                  Submitted Forms ({userStats.totalForms})
                 </h3>
-              </div>
-              <p className="text-sm text-gray-600 mb-4">
-                View your previously submitted health assessment forms. Each form represents a separate health session.
-              </p>
-              
-              {/* Dynamic submitted forms */}
-              <div className="space-y-3">
-                {submittedForms.length === 0 ? (
-                  <div className="text-center py-8">
-                    <ClipboardDocumentListIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-sm text-gray-500 mb-2">No forms submitted yet</p>
-                    <p className="text-xs text-gray-400">Your submitted health assessment forms will appear here</p>
-                  </div>
-                ) : (
-                  submittedForms.map((form, index) => (
-                    <div key={form.form_id} className="bg-gray-50 border border-gray-200 rounded-lg p-3 hover:bg-gray-100 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <span className="text-sm font-medium text-gray-900 truncate">{form.form_id}</span>
-                            {index === submittedForms.length - 1 && (
-                              <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">
-                                Latest
-                              </span>
-                            )}
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-xs text-gray-600">
-                              <span className="font-medium">Submitted:</span> {new Date(form.submitted_date || form.created_at || Date.now()).toLocaleDateString()}
-                            </p>
-                            <p className="text-xs text-gray-500 truncate">
-                              <span className="font-medium">Type:</span> {getMedicalSystemLabel(form.medical_system)}
-                            </p>
-                            <p className="text-xs text-gray-500 truncate">
-                              <span className="font-medium">Status:</span> {form.status || form.form_status || 'Submitted'}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex-shrink-0 ml-3">
-                          <button 
-                            onClick={() => handleViewForm(form)}
-                            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center space-x-1 hover:bg-primary-50 px-3 py-2 rounded-md transition-colors border border-transparent hover:border-primary-200"
-                          >
-                            <EyeIcon className="h-4 w-4" />
-                            <span>View</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div className="mt-4 pt-3 border-t border-gray-200">
-                <button className="w-full text-center text-primary-600 hover:text-primary-700 text-sm font-medium py-2 px-4 rounded-md hover:bg-primary-50 transition-colors">
-                  View All Submissions →
-                </button>
               </div>
             </div>
           </div>

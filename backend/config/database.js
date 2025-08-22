@@ -10,7 +10,7 @@ const dbConfig = {
   database: process.env.DB_NAME || 'lifestyle_clinic',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 1
 };
 
 // Create connection pool

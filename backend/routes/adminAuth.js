@@ -122,7 +122,7 @@ router.post('/login', loginValidation, handleValidationErrors, async (req, res, 
 router.get('/me', verifyAdminToken, async (req, res, next) => {
   try {
     const [adminResult] = await db.execute(
-      'SELECT admin_id, username, email, role, created_at FROM admins WHERE admin_id = ?',
+      'SELECT admin_id, username, role, created_at FROM admins WHERE admin_id = ?',
       [req.admin.adminId]
     );
     
@@ -140,7 +140,6 @@ router.get('/me', verifyAdminToken, async (req, res, next) => {
       data: {
         adminId: adminData.admin_id,
         username: adminData.username,
-        email: adminData.email,
         role: adminData.role,
         createdAt: adminData.created_at
       }

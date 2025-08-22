@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { pool } = require('../config/database');
+const db = require('../config/database');
 
 // Middleware to verify JWT token
 const verifyToken = async (req, res, next) => {
@@ -47,8 +47,8 @@ const verifyAdminToken = async (req, res, next) => {
     }
 
     // Verify admin exists in database
-    const [admin] = await pool.execute(
-      'SELECT admin_id, username, role, is_active FROM admins WHERE admin_id = ? AND is_active = TRUE',
+    const [admin] = await db.execute(
+      'SELECT admin_id, username, role, is_active FROM admins WHERE admin_id = ? AND is_active = 1',
       [decoded.adminId]
     );
 

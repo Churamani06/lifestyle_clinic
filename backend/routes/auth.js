@@ -28,8 +28,8 @@ const registerValidation = [
   
   body('phone')
     .trim()
-    .isMobilePhone('en-IN')
-    .withMessage('Please provide a valid Indian mobile number'),
+    .matches(/^(\+91[-\s]?)?[0-9]{10}$/)
+    .withMessage('Please provide a valid Indian mobile number (10 digits, with or without +91)'),
   
   body('password')
     .isLength({ min: 8 })
@@ -80,6 +80,9 @@ router.post('/register', registerValidation, handleValidationErrors, async (req,
     
     const { firstName, lastName, email, phone, password, agreeToTerms, subscribeNewsletter } = req.body;
 
+    // Normalize phone number (remove +91, spaces, hyphens)
+    const normalizedPhone = phone.replace(/^\+91[-\s]?/, '').replace(/[-\s]/g, '');
+
     // Check if user already exists
     const [existingUsers] = await db.execute(
       'SELECT user_id FROM users WHERE email = ?',
@@ -101,7 +104,7 @@ router.post('/register', registerValidation, handleValidationErrors, async (req,
     const [result] = await db.execute(
       `INSERT INTO users (first_name, last_name, email, phone, password, agree_to_terms, subscribe_newsletter) 
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [firstName, lastName, email, phone, hashedPassword, agreeToTerms, subscribeNewsletter || true]
+      [firstName, lastName, email, normalizedPhone, hashedPassword, agreeToTerms, subscribeNewsletter || true]
     );
 
     // Generate JWT token

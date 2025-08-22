@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LockClosedIcon, UserIcon, ExclamationTriangleIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { adminAPI } from '../config/api';
 
 const Admin = () => {
   const [formData, setFormData] = useState({
@@ -27,19 +28,18 @@ const Admin = () => {
     setIsLoading(true);
     setLoginStatus(null);
 
+    console.log('🔍 Admin login attempt:', {
+      username: formData.username,
+      apiUrl: 'http://localhost:5000/api/admin-auth/login'
+    });
+
     try {
-      const response = await fetch('http://localhost:5000/api/admin-auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: formData.username,
-          password: formData.password
-        })
+      const data = await adminAPI.login({
+        username: formData.username,
+        password: formData.password
       });
 
-      const data = await response.json();
+      console.log('✅ Admin login response:', data);
 
       if (data.success) {
         setLoginStatus('success');
@@ -48,15 +48,22 @@ const Admin = () => {
         localStorage.setItem('adminToken', data.data.token);
         localStorage.setItem('adminData', JSON.stringify(data.data.admin));
         
+        console.log('✅ Admin data stored successfully');
+        
         // Redirect to admin dashboard after a brief success display
         setTimeout(() => {
           navigate('/admin/dashboard');
         }, 1500);
       } else {
+        console.log('❌ Login failed:', data);
         setLoginStatus('error');
       }
     } catch (error) {
-      console.error('Admin login error:', error);
+      console.error('❌ Admin login error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
       setLoginStatus('error');
     } finally {
       setIsLoading(false);

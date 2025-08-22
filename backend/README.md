@@ -72,10 +72,6 @@ JWT_EXPIRES_IN=24h
 PORT=5000
 NODE_ENV=development
 
-# Admin Default Credentials
-DEFAULT_ADMIN_USERNAME=admin
-DEFAULT_ADMIN_PASSWORD=admin123
-
 # CORS Configuration
 FRONTEND_URL=http://localhost:5173
 ```
@@ -135,15 +131,6 @@ For development with auto-restart on file changes:
 ```bash
 npm run dev
 ```
-
-## Default Admin Account
-
-On first startup, a default admin account is created:
-- **Username**: admin
-- **Password**: admin123
-- **Role**: super_admin
-
-⚠️ **Important**: Change the default password after first login in production.
 
 ## API Response Format
 

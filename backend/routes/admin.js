@@ -19,19 +19,19 @@ router.get('/dashboard/statistics', verifyAdminToken, async (req, res, next) => 
 
     // Get total health forms
     const [totalFormsResult] = await db.execute(
-      'SELECT COUNT(*) as count FROM healthassessmentforms'
+      'SELECT COUNT(*) as count FROM health_assessment_forms'
     );
     const totalHealthForms = totalFormsResult[0].count;
 
     // Get recent submissions (last 30 days)
     const [recentSubmissionsResult] = await db.execute(
-      'SELECT COUNT(*) as count FROM healthassessmentforms WHERE submittedAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)'
+      'SELECT COUNT(*) as count FROM health_assessment_forms WHERE submitted_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)'
     );
     const recentSubmissions = recentSubmissionsResult[0].count;
 
     // Get active users (users who submitted forms in last 30 days)
     const [activeUsersResult] = await db.execute(
-      'SELECT COUNT(DISTINCT userId) as count FROM healthassessmentforms WHERE submittedAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)'
+      'SELECT COUNT(DISTINCT user_id) as count FROM health_assessment_forms WHERE submitted_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)'
     );
     const activeUsers = activeUsersResult[0].count;
 
@@ -67,8 +67,7 @@ router.get('/users', verifyAdminToken, async (req, res, next) => {
 
     // Get users with pagination
     const [users] = await db.execute(
-      'SELECT id, username, email, createdAt FROM users ORDER BY createdAt DESC LIMIT ? OFFSET ?',
-      [limit, offset]
+      `SELECT user_id as id, CONCAT(first_name, " ", last_name) as username, email, created_at as createdAt FROM users ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`
     );
 
     const totalPages = Math.ceil(total / limit);
@@ -101,7 +100,7 @@ router.get('/users/:userId', verifyAdminToken, async (req, res, next) => {
     
     // Get user details
     const [userResult] = await db.execute(
-      'SELECT id, username, email, createdAt FROM users WHERE id = ?',
+      'SELECT user_id as id, CONCAT(first_name, " ", last_name) as username, email, created_at as createdAt FROM users WHERE user_id = ?',
       [userId]
     );
     
@@ -116,7 +115,7 @@ router.get('/users/:userId', verifyAdminToken, async (req, res, next) => {
 
     // Get user's health forms
     const [healthForms] = await db.execute(
-      'SELECT * FROM healthassessmentforms WHERE userId = ? ORDER BY submittedAt DESC',
+      'SELECT * FROM health_assessment_forms WHERE user_id = ? ORDER BY submitted_date DESC',
       [userId]
     );
 
@@ -144,7 +143,7 @@ router.put('/users/:userId/deactivate',
       
       // Check if user exists and update their status
       const [result] = await db.execute(
-        'UPDATE users SET isActive = FALSE WHERE id = ?',
+        'UPDATE users SET is_active = FALSE WHERE user_id = ?',
         [userId]
       );
       
@@ -169,121 +168,80 @@ router.put('/users/:userId/deactivate',
 // @route   GET /api/admin/health-forms
 // @desc    Get all health assessment forms with filters
 // @access  Private (Admin only)
-router.get('/health-forms', 
-  verifyAdminToken,
-  [
-    query('medicalSystem')
-      .optional()
-      .isIn(['ayurvedic', 'allopathic', 'homeopathic', 'naturopathy', 'any'])
-      .withMessage('Invalid medical system filter'),
+router.get('/health-forms', verifyAdminToken, async (req, res, next) => {
+  try {
+    console.log('🔍 Fetching health forms...');
+    console.log('📋 Query parameters:', req.query);
     
-    query('formStatus')
-      .optional()
-      .isIn(['submitted', 'reviewed', 'consultation_scheduled', 'completed'])
-      .withMessage('Invalid form status filter'),
+    const { month, year, page = 1, limit = 50 } = req.query;
     
-    query('dateFrom')
-      .optional()
-      .isISO8601()
-      .withMessage('Invalid date format for dateFrom'),
+    // For now, let's just get all records and filter in memory to avoid SQL issues
+    const basicQuery = `
+      SELECT h.*, u.email, CONCAT(u.first_name, ' ', u.last_name) as username
+      FROM health_assessment_forms h 
+      LEFT JOIN users u ON h.user_id = u.user_id 
+      ORDER BY h.submitted_date DESC 
+      LIMIT 100
+    `;
     
-    query('dateTo')
-      .optional()
-      .isISO8601()
-      .withMessage('Invalid date format for dateTo'),
+    console.log('📋 Executing basic query:', basicQuery);
+    const [allForms] = await db.execute(basicQuery);
+    console.log('✅ Query successful, found', allForms.length, 'total records');
+
+    // Apply filters in JavaScript for now
+    let filteredForms = allForms;
     
-    query('month')
-      .optional()
-      .isInt({ min: 1, max: 12 })
-      .withMessage('Month must be between 1 and 12'),
+    if (month && month !== 'all') {
+      filteredForms = filteredForms.filter(form => {
+        const formDate = new Date(form.submitted_date);
+        const formMonth = String(formDate.getMonth() + 1).padStart(2, '0');
+        return formMonth === month;
+      });
+      console.log(`📅 After month filter (${month}):`, filteredForms.length, 'records');
+    }
     
-    query('year')
-      .optional()
-      .isInt({ min: 2020, max: 2030 })
-      .withMessage('Year must be between 2020 and 2030')
-  ],
-  handleValidationErrors,
-  async (req, res, next) => {
-    try {
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 10;
-      const offset = (page - 1) * limit;
-      
-      // Build the WHERE clause based on filters
-      let whereConditions = [];
-      let queryParams = [];
+    if (year && year !== 'all') {
+      filteredForms = filteredForms.filter(form => {
+        const formDate = new Date(form.submitted_date);
+        const formYear = String(formDate.getFullYear());
+        return formYear === year;
+      });
+      console.log(`📅 After year filter (${year}):`, filteredForms.length, 'records');
+    }
 
-      if (req.query.medicalSystem && req.query.medicalSystem !== 'any') {
-        whereConditions.push('medicalSystemPreference = ?');
-        queryParams.push(req.query.medicalSystem);
-      }
+    // Apply pagination
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const paginatedForms = filteredForms.slice(offset, offset + parseInt(limit));
+    
+    console.log('📄 Final results:', paginatedForms.length, 'records');
 
-      if (req.query.formStatus) {
-        whereConditions.push('status = ?');
-        queryParams.push(req.query.formStatus);
-      }
-
-      if (req.query.dateFrom) {
-        whereConditions.push('submittedAt >= ?');
-        queryParams.push(req.query.dateFrom);
-      }
-
-      if (req.query.dateTo) {
-        whereConditions.push('submittedAt <= ?');
-        queryParams.push(req.query.dateTo);
-      }
-
-      if (req.query.month) {
-        whereConditions.push('MONTH(submittedAt) = ?');
-        queryParams.push(parseInt(req.query.month));
-      }
-
-      if (req.query.year) {
-        whereConditions.push('YEAR(submittedAt) = ?');
-        queryParams.push(parseInt(req.query.year));
-      }
-
-      const whereClause = whereConditions.length > 0 
-        ? 'WHERE ' + whereConditions.join(' AND ') 
-        : '';
-
-      // Get total count
-      const countQuery = `SELECT COUNT(*) as total FROM healthassessmentforms ${whereClause}`;
-      const [countResult] = await db.execute(countQuery, queryParams);
-      const total = countResult[0].total;
-
-      // Get forms with pagination
-      const formsQuery = `
-        SELECT h.*, u.username, u.email 
-        FROM healthassessmentforms h 
-        LEFT JOIN users u ON h.userId = u.id 
-        ${whereClause} 
-        ORDER BY h.submittedAt DESC 
-        LIMIT ? OFFSET ?
-      `;
-      const [forms] = await db.execute(formsQuery, [...queryParams, limit, offset]);
-
-      const totalPages = Math.ceil(total / limit);
-
-      res.json({
-        success: true,
-        data: {
-          forms,
-          pagination: {
-            currentPage: page,
-            totalPages,
-            totalForms: total,
-            hasNext: page < totalPages,
-            hasPrev: page > 1
+    res.json({
+      success: true,
+      data: {
+        forms: paginatedForms,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(filteredForms.length / parseInt(limit)),
+          totalForms: filteredForms.length,
+          hasNext: parseInt(page) < Math.ceil(filteredForms.length / parseInt(limit)),
+          hasPrev: parseInt(page) > 1,
+          filtersApplied: {
+            month: month !== 'all' ? month : null,
+            year: year !== 'all' ? year : null
           }
         }
-      });
+      }
+    });
 
-    } catch (error) {
-      next(error);
-    }
+  } catch (error) {
+    console.error('❌ Health forms fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch health forms',
+      error: error.message
+    });
   }
-);
+});
 
 // @route   GET /api/admin/health-forms/:formId
 // @desc    Get specific health assessment form
@@ -294,9 +252,9 @@ router.get('/health-forms/:formId', verifyAdminToken, async (req, res, next) => 
     
     // Get form with user details
     const [formResult] = await db.execute(
-      `SELECT h.*, u.username, u.email 
-       FROM healthassessmentforms h 
-       LEFT JOIN users u ON h.userId = u.id 
+      `SELECT h.*, u.email, CONCAT(u.first_name, ' ', u.last_name) as username
+       FROM health_assessment_forms h 
+       LEFT JOIN users u ON h.user_id = u.user_id 
        WHERE h.id = ?`,
       [formId]
     );
@@ -354,8 +312,8 @@ router.put('/health-forms/:formId/status',
       
       // Update form status
       const [result] = await db.execute(
-        `UPDATE healthassessmentforms 
-         SET status = ?, adminNotes = ?, assignedDoctorId = ?, consultationDate = ?, updatedAt = NOW()
+        `UPDATE health_assessment_forms 
+         SET status = ?, admin_notes = ?, assigned_doctor_id = ?, consultation_date = ?, updated_at = NOW()
          WHERE id = ?`,
         [status, notes || null, assignedDoctorId || null, consultationDate || null, formId]
       );
@@ -389,7 +347,7 @@ router.delete('/health-forms/:formId',
       
       // Delete the form
       const [result] = await db.execute(
-        'DELETE FROM healthassessmentforms WHERE id = ?',
+        'DELETE FROM health_assessment_forms WHERE id = ?',
         [formId]
       );
       
@@ -421,12 +379,12 @@ router.get('/reports/monthly-data', verifyAdminToken, async (req, res, next) => 
     // Get monthly submission data
     const [monthlyData] = await db.execute(
       `SELECT 
-        MONTH(submittedAt) as month,
+        MONTH(submitted_date) as month,
         COUNT(*) as submissions,
-        COUNT(DISTINCT userId) as uniqueUsers
-       FROM healthassessmentforms 
-       WHERE YEAR(submittedAt) = ? 
-       GROUP BY MONTH(submittedAt) 
+        COUNT(DISTINCT user_id) as uniqueUsers
+       FROM health_assessment_forms 
+       WHERE YEAR(submitted_date) = ? 
+       GROUP BY MONTH(submitted_date) 
        ORDER BY month`,
       [year]
     );

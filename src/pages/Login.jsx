@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { EyeIcon, EyeSlashIcon, HeartIcon } from '@heroicons/react/24/outline';
+import { authAPI } from '../config/api';
 
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -23,18 +24,10 @@ const Login = () => {
     e.preventDefault();
     
     try {
-      const response = await fetch('http://localhost:5000/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password
-        })
+      const data = await authAPI.login({
+        email: formData.email,
+        password: formData.password
       });
-
-      const data = await response.json();
 
       if (data.success) {
         // Store token and user data
@@ -50,7 +43,7 @@ const Login = () => {
       }
     } catch (error) {
       console.error('Login error:', error);
-      alert('Network error. Please check if the backend server is running.');
+      alert(error.message || 'Network error. Please check if the backend server is running.');
     }
   };
 
